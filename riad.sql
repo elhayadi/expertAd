@@ -1,0 +1,598 @@
+-- phpMyAdmin SQL Dump
+-- version 4.9.1
+-- https://www.phpmyadmin.net/
+--
+-- Host: localhost
+-- Generation Time: Feb 24, 2021 at 05:56 PM
+-- Server version: 10.4.8-MariaDB
+-- PHP Version: 7.1.32
+
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+SET AUTOCOMMIT = 0;
+START TRANSACTION;
+SET time_zone = "+00:00";
+
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8mb4 */;
+
+--
+-- Database: `riad`
+--
+
+DELIMITER $$
+--
+-- Procedures
+--
+CREATE DEFINER=`root`@`localhost` PROCEDURE `checkRoomAvailablility` (`hotel_id` INTEGER, `arrival_date` VARCHAR(10), `exit_date` VARCHAR(10), `room_type_id` INTEGER)  BEGIN
+  SELECT RO.ID FROM ROOMS RO
+  WHERE RO.HOTEL_ID=hotel_id AND RO.ROOMTYPE_ID=room_type_id
+  AND RO.ID NOT IN (
+    SELECT DISTINCT OC.ROOM_ID FROM RESERVATIONS RE
+    LEFT JOIN OCCUPATIONS OC ON RE.ID = OC.RESERVATION_ID
+    WHERE (NOT RE.IS_ARCHIVED OR NOT RE.IS_CANCELLED)
+    AND DATE(arrival_date) >= RE.ARRIVAL_DATE AND DATE(exit_date) <= RE.EXIT_DATE);
+END$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `getAvailableRooms` (`arrival_date` VARCHAR(10), `exit_date` VARCHAR(10))  BEGIN  
+  SELECT ID FROM ROOMS
+  WHERE ID NOT IN (
+    SELECT DISTINCT OC.ROOM_ID FROM RESERVATIONS RE
+    LEFT JOIN OCCUPATIONS OC ON RE.ID = OC.RESERVATION_ID
+    WHERE (NOT RE.IS_ARCHIVED OR NOT RE.IS_CANCELLED)
+    AND DATE(arrival_date) >= RE.ARRIVAL_DATE AND DATE(exit_date) <= RE.EXIT_DATE);
+END$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `getAvailableRoomsByCity` (IN `city` VARCHAR(30), IN `arrival_date` VARCHAR(10), IN `exit_date` VARCHAR(10))  BEGIN
+  SELECT RO.ID FROM ROOMS RO
+  LEFT JOIN ROOMTYPES RT ON RT.ID = RO.ROOMTYPE_ID
+  WHERE RT.NAME LIKE CONCAT("%",city,"%")
+  AND RO.ID NOT IN (
+    SELECT DISTINCT OC.ROOM_ID FROM RESERVATIONS RE
+    LEFT JOIN OCCUPATIONS OC ON RE.ID = OC.RESERVATION_ID
+    WHERE (NOT RE.IS_ARCHIVED OR NOT RE.IS_CANCELLED)
+    AND DATE(arrival_date) >= RE.ARRIVAL_DATE AND DATE(exit_date) <= RE.EXIT_DATE);
+END$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `getRoomsNB` ()  SELECT ROOMTYPE_ID,COUNT(ROOMTYPE_ID) AS RES FROM ROOMS GROUP BY ROOMTYPE_ID$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `getTotalAmount` (`reservation_id` INTEGER)  BEGIN
+  DECLARE group_discount INTEGER DEFAULT getGroupDiscount();
+  DECLARE regular_client_discount INTEGER DEFAULT getRegularClientDiscount();
+  DECLARE total_discount INTEGER DEFAULT 0;
+  DECLARE client_id INTEGER;
+  DECLARE is_regular_client BOOLEAN;
+  DECLARE people_count INTEGER;
+  DECLARE total DOUBLE DEFAULT 0;
+  SELECT ROUND((RT.PRICE*RE.DURATION*RE.ROOM_COUNT)+COALESCE(SUM(SE.PRICE),0),2), RE.PEOPLE_COUNT, RE.CLIENT_ID INTO total, people_count, client_id
+  FROM RESERVATIONS RE
+  JOIN ROOMTYPES RT    ON RE.ROOMTYPE_ID = RT.ID
+  JOIN OCCUPATIONS OC  ON OC.RESERVATION_ID = RE.ID
+  JOIN BILLEDSERVICES BS ON BS.OCCUPATION_ID = OC.ID
+  JOIN SERVICES SE     ON BS.SERVICE_ID = SE.ID
+  WHERE RE.ID = reservation_id;
+  SELECT IS_REGULAR INTO is_regular_client FROM CLIENTS WHERE ID = client_id;
+  IF (is_regular_client = 1) THEN
+    SET total_discount = regular_client_discount;
+  END IF;
+  IF (people_count >= 3) THEN
+    SET total_discount = total_discount + group_discount;
+  END IF;
+  SET total = ROUND(total-((total*total_discount)/100),2);
+  SELECT total;
+END$$
+
+--
+-- Functions
+--
+CREATE DEFINER=`root`@`localhost` FUNCTION `getGroupDiscount` () RETURNS INT(2) RETURN 10$$
+
+CREATE DEFINER=`root`@`localhost` FUNCTION `getRegularClientDiscount` () RETURNS INT(2) RETURN 20$$
+
+DELIMITER ;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `BILLEDSERVICES`
+--
+
+CREATE TABLE `BILLEDSERVICES` (
+  `ID` int(10) UNSIGNED NOT NULL,
+  `OCCUPATION_ID` int(10) UNSIGNED NOT NULL,
+  `SERVICE_ID` int(10) UNSIGNED NOT NULL,
+  `IS_ARCHIVED` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `BILLS`
+--
+
+CREATE TABLE `BILLS` (
+  `ID` int(10) UNSIGNED NOT NULL,
+  `RESERVATION_ID` int(10) UNSIGNED NOT NULL,
+  `CLIENT_ID` int(10) UNSIGNED NOT NULL,
+  `AMOUNT` decimal(8,2) NOT NULL,
+  `IS_PAYED` tinyint(1) NOT NULL DEFAULT 0,
+  `IS_ARCHIVED` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- Dumping data for table `BILLS`
+--
+
+INSERT INTO `BILLS` (`ID`, `RESERVATION_ID`, `CLIENT_ID`, `AMOUNT`, `IS_PAYED`, `IS_ARCHIVED`) VALUES
+(2, 2, 3, '79.98', 0, 1),
+(3, 3, 3, '95.99', 0, 1),
+(4, 4, 4, '119.99', 0, 1),
+(6, 6, 4, '100.00', 0, 0);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `CLIENTS`
+--
+
+CREATE TABLE `CLIENTS` (
+  `ID` int(10) UNSIGNED NOT NULL,
+  `FIRSTNAME` varchar(30) NOT NULL,
+  `LASTNAME` varchar(30) NOT NULL,
+  `STREET` varchar(30) NOT NULL,
+  `CITY` varchar(30) NOT NULL,
+  `MAIL` varchar(30) NOT NULL,
+  `PASSWORD` varchar(200) NOT NULL,
+  `IS_REGULAR` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- Dumping data for table `CLIENTS`
+--
+
+INSERT INTO `CLIENTS` (`ID`, `FIRSTNAME`, `LASTNAME`, `STREET`, `CITY`, `MAIL`, `PASSWORD`, `IS_REGULAR`) VALUES
+(1, 'HERCULE', 'Bertrand', '34 rue Mangeons', 'Toulouse', 'hercule-b@gmail.com', 'herculeb', 0),
+(2, 'MONTROI', 'Paul', '3 avenue des Voitures', 'Grenoble', 'montroi-p@gmail.com', 'montroip', 0),
+(3, 'RONPUI', 'Henro', '89 rue du Pigeon', 'Lille', 'ronpui-h@gmail.com', 'ronpuih', 1),
+(4, 'USER', 'Testee', 'user adress', 'Essaouira', 'usertest@gmail.com', '$2b$08$bOYXzFv2ZvVBcvuaWUpsguuZg4AGZ3lhyO9RJI27bWXcqM6ZZUeOW', 0);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `HOTELS`
+--
+
+CREATE TABLE `HOTELS` (
+  `ID` int(10) UNSIGNED NOT NULL,
+  `NAME` varchar(30) NOT NULL,
+  `STREET` varchar(50) NOT NULL,
+  `CITY` varchar(30) NOT NULL,
+  `STAR_RATING` int(10) UNSIGNED NOT NULL
+) ;
+
+--
+-- Dumping data for table `HOTELS`
+--
+
+INSERT INTO `HOTELS` (`ID`, `NAME`, `STREET`, `CITY`, `STAR_RATING`) VALUES
+(1, 'Riad Essouiri', 'Essaouira, street', 'Essaouira', 4),
+(2, 'IBIS CLASSIC', '3 rue Mauvais', 'Paris', 4),
+(3, 'IBIS LUXE', '12 avenue de la Fleur', 'Nice', 5);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `OCCUPANTS`
+--
+
+CREATE TABLE `OCCUPANTS` (
+  `ID` int(10) UNSIGNED NOT NULL,
+  `OCCUPATION_ID` int(10) UNSIGNED NOT NULL,
+  `FIRSTNAME` varchar(30) NOT NULL,
+  `LASTNAME` varchar(30) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `OCCUPATIONS`
+--
+
+CREATE TABLE `OCCUPATIONS` (
+  `ID` int(10) UNSIGNED NOT NULL,
+  `RESERVATION_ID` int(10) UNSIGNED NOT NULL,
+  `ROOM_ID` int(10) UNSIGNED NOT NULL,
+  `IS_CLIENT_PRESENT` tinyint(1) NOT NULL DEFAULT 0,
+  `IS_ARCHIVED` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- Dumping data for table `OCCUPATIONS`
+--
+
+INSERT INTO `OCCUPATIONS` (`ID`, `RESERVATION_ID`, `ROOM_ID`, `IS_CLIENT_PRESENT`, `IS_ARCHIVED`) VALUES
+(1, 1, 6, 0, 1),
+(3, 2, 1, 0, 1),
+(2, 2, 2, 0, 1),
+(4, 3, 6, 0, 1),
+(5, 4, 6, 0, 1),
+(6, 5, 6, 0, 1),
+(7, 6, 38, 0, 0);
+
+--
+-- Triggers `OCCUPATIONS`
+--
+DELIMITER $$
+CREATE TRIGGER `ON_ARCHIVE_OCCUPATION` AFTER UPDATE ON `OCCUPATIONS` FOR EACH ROW BEGIN
+IF (NEW.IS_ARCHIVED) THEN
+	DELETE FROM OCCUPANTS WHERE OCCUPATION_ID = NEW.ID;
+	UPDATE BILLEDSERVICES SET IS_ARCHIVED = 1 WHERE OCCUPATION_ID = NEW.ID;
+END IF;
+END
+$$
+DELIMITER ;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `RESERVATIONS`
+--
+
+CREATE TABLE `RESERVATIONS` (
+  `ID` int(10) UNSIGNED NOT NULL,
+  `CLIENT_ID` int(10) UNSIGNED DEFAULT NULL,
+  `HOTEL_ID` int(10) UNSIGNED DEFAULT NULL,
+  `ROOMTYPE_ID` int(10) UNSIGNED DEFAULT NULL,
+  `ARRIVAL_DATE` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `EXIT_DATE` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `DURATION` int(10) UNSIGNED NOT NULL,
+  `ROOM_COUNT` int(10) UNSIGNED NOT NULL,
+  `PEOPLE_COUNT` int(10) UNSIGNED NOT NULL,
+  `IS_PAYED` tinyint(1) NOT NULL DEFAULT 0,
+  `IS_COMFIRMED` tinyint(1) NOT NULL DEFAULT 0,
+  `IS_CANCELLED` tinyint(1) NOT NULL DEFAULT 0,
+  `IS_ARCHIVED` tinyint(1) NOT NULL DEFAULT 0
+) ;
+
+--
+-- Dumping data for table `RESERVATIONS`
+--
+
+INSERT INTO `RESERVATIONS` (`ID`, `CLIENT_ID`, `HOTEL_ID`, `ROOMTYPE_ID`, `ARRIVAL_DATE`, `EXIT_DATE`, `DURATION`, `ROOM_COUNT`, `PEOPLE_COUNT`, `IS_PAYED`, `IS_COMFIRMED`, `IS_CANCELLED`, `IS_ARCHIVED`) VALUES
+(1, 3, 2, 3, '2021-02-26 22:00:00', '2021-02-27 22:00:00', 1, 1, 4, 0, 0, 1, 1),
+(2, 3, 1, 1, '2021-02-25 22:00:00', '2021-02-26 22:00:00', 1, 2, 1, 1, 0, 1, 1),
+(3, 3, 2, 3, '2021-02-25 22:00:00', '2021-02-26 22:00:00', 1, 1, 1, 1, 0, 1, 1),
+(4, 4, 1, 3, '2021-02-25 22:00:00', '2021-02-26 22:00:00', 1, 1, 1, 1, 0, 1, 1),
+(5, 4, 1, 3, '2021-02-26 22:00:00', '2021-02-27 22:00:00', 1, 1, 1, 0, 0, 1, 1),
+(6, 4, 1, 12, '2021-02-26 22:00:00', '2021-02-27 22:00:00', 1, 1, 1, 1, 0, 0, 0);
+
+--
+-- Triggers `RESERVATIONS`
+--
+DELIMITER $$
+CREATE TRIGGER `CHECK_RESERVATIONS_DATES` BEFORE INSERT ON `RESERVATIONS` FOR EACH ROW BEGIN
+DECLARE N INTEGER;
+SELECT 1 INTO N FROM RESERVATIONS
+WHERE CLIENT_ID = NEW.CLIENT_ID AND (NOT IS_ARCHIVED OR NOT IS_CANCELLED)
+AND NOT(DATEDIFF(NEW.EXIT_DATE, ARRIVAL_DATE) <= 0 OR DATEDIFF(NEW.ARRIVAL_DATE, EXIT_DATE) >= 0);
+IF (N > 0) THEN SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'OVERLAPPING';
+END IF;
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `CHECK_ROOM_AVAILABILITY` BEFORE INSERT ON `RESERVATIONS` FOR EACH ROW BEGIN
+DECLARE N INTEGER;
+SELECT COUNT(*) INTO N FROM ROOMS RO
+  WHERE RO.HOTEL_ID=NEW.HOTEL_ID AND RO.ROOMTYPE_ID=NEW.ROOMTYPE_ID
+  AND RO.ID NOT IN (
+    SELECT DISTINCT OC.ROOM_ID FROM RESERVATIONS RE
+    LEFT JOIN OCCUPATIONS OC ON RE.ID = OC.RESERVATION_ID
+    WHERE (NOT RE.IS_ARCHIVED OR NOT RE.IS_CANCELLED) 
+    AND DATE(arrival_date) >= RE.ARRIVAL_DATE AND DATE(exit_date) <= RE.EXIT_DATE);
+IF (N < NEW.ROOM_COUNT) THEN SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'NO_ROOM_AVAILABLE';
+END IF;
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `NEW_RESERVATION` AFTER INSERT ON `RESERVATIONS` FOR EACH ROW BEGIN
+	INSERT INTO BILLS(RESERVATION_ID,CLIENT_ID,AMOUNT,IS_PAYED,IS_ARCHIVED) VALUES (NEW.ID,NEW.CLIENT_ID,0.0,0,0);
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `ON_UPDATE_RESERVATION` BEFORE UPDATE ON `RESERVATIONS` FOR EACH ROW BEGIN
+IF (NEW.IS_CANCELLED) THEN
+	SET NEW.IS_ARCHIVED = 1;
+END IF;
+IF (NEW.IS_ARCHIVED) THEN
+	UPDATE OCCUPATIONS SET IS_ARCHIVED = 1, IS_CLIENT_PRESENT = 0 WHERE RESERVATION_ID = NEW.ID;
+END IF;
+END
+$$
+DELIMITER ;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `ROOMS`
+--
+
+CREATE TABLE `ROOMS` (
+  `ID` int(10) UNSIGNED NOT NULL,
+  `HOTEL_ID` int(10) UNSIGNED DEFAULT NULL,
+  `ROOMTYPE_ID` int(10) UNSIGNED NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- Dumping data for table `ROOMS`
+--
+
+INSERT INTO `ROOMS` (`ID`, `HOTEL_ID`, `ROOMTYPE_ID`) VALUES
+(1, 1, 1),
+(2, 1, 1),
+(5, 1, 2),
+(6, 1, 3),
+(8, 1, 4),
+(9, 1, 4),
+(15, 1, 2),
+(16, 1, 2),
+(36, 1, 11),
+(37, 1, 11),
+(38, 1, 12),
+(39, 1, 12);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `ROOMTYPES`
+--
+
+CREATE TABLE `ROOMTYPES` (
+  `ID` int(10) UNSIGNED NOT NULL,
+  `NAME` varchar(30) NOT NULL,
+  `PRICE` decimal(6,2) UNSIGNED NOT NULL,
+  `BED_CAPACITY` int(10) UNSIGNED NOT NULL,
+  `HAS_PHONE` tinyint(1) NOT NULL,
+  `HAS_TV` tinyint(1) NOT NULL
+) ;
+
+--
+-- Dumping data for table `ROOMTYPES`
+--
+
+INSERT INTO `ROOMTYPES` (`ID`, `NAME`, `PRICE`, `BED_CAPACITY`, `HAS_PHONE`, `HAS_TV`) VALUES
+(1, 'STANDARD', '49.99', 1, 0, 0),
+(2, 'TOURISM', '79.99', 1, 0, 1),
+(3, 'COMFORT', '119.99', 2, 0, 1),
+(4, 'LUXURY', '299.99', 3, 1, 1),
+(11, 'myCham', '450.00', 2, 1, 1),
+(12, 'Cham2', '100.00', 5, 1, 0);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `SERVICES`
+--
+
+CREATE TABLE `SERVICES` (
+  `ID` int(10) UNSIGNED NOT NULL,
+  `HOTEL_ID` int(10) UNSIGNED NOT NULL,
+  `NAME` varchar(30) NOT NULL,
+  `PRICE` decimal(6,2) UNSIGNED NOT NULL,
+  `UNIQUE_ORDER` tinyint(1) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- Dumping data for table `SERVICES`
+--
+
+INSERT INTO `SERVICES` (`ID`, `HOTEL_ID`, `NAME`, `PRICE`, `UNIQUE_ORDER`) VALUES
+(1, 1, 'Télévision', '19.99', 1),
+(3, 2, 'Petit déjeuner', '9.99', 0),
+(2, 2, 'Téléphone fixe', '19.99', 1),
+(5, 3, 'Cocktails à volonté', '59.99', 1),
+(4, 3, 'Petit déjeuner volonté', '29.99', 0);
+
+--
+-- Indexes for dumped tables
+--
+
+--
+-- Indexes for table `BILLEDSERVICES`
+--
+ALTER TABLE `BILLEDSERVICES`
+  ADD PRIMARY KEY (`ID`),
+  ADD KEY `OCCUPATION_ID` (`OCCUPATION_ID`),
+  ADD KEY `SERVICE_ID` (`SERVICE_ID`);
+
+--
+-- Indexes for table `BILLS`
+--
+ALTER TABLE `BILLS`
+  ADD PRIMARY KEY (`RESERVATION_ID`,`CLIENT_ID`),
+  ADD UNIQUE KEY `ID` (`ID`),
+  ADD KEY `CLIENT_ID` (`CLIENT_ID`);
+
+--
+-- Indexes for table `CLIENTS`
+--
+ALTER TABLE `CLIENTS`
+  ADD PRIMARY KEY (`ID`),
+  ADD UNIQUE KEY `MAIL` (`MAIL`);
+
+--
+-- Indexes for table `HOTELS`
+--
+ALTER TABLE `HOTELS`
+  ADD PRIMARY KEY (`ID`);
+
+--
+-- Indexes for table `OCCUPANTS`
+--
+ALTER TABLE `OCCUPANTS`
+  ADD PRIMARY KEY (`OCCUPATION_ID`,`FIRSTNAME`,`LASTNAME`),
+  ADD UNIQUE KEY `ID` (`ID`);
+
+--
+-- Indexes for table `OCCUPATIONS`
+--
+ALTER TABLE `OCCUPATIONS`
+  ADD PRIMARY KEY (`RESERVATION_ID`,`ROOM_ID`),
+  ADD UNIQUE KEY `ID` (`ID`),
+  ADD KEY `ROOM_ID` (`ROOM_ID`);
+
+--
+-- Indexes for table `RESERVATIONS`
+--
+ALTER TABLE `RESERVATIONS`
+  ADD PRIMARY KEY (`ID`),
+  ADD KEY `CLIENT_ID` (`CLIENT_ID`),
+  ADD KEY `HOTEL_ID` (`HOTEL_ID`),
+  ADD KEY `ROOMTYPE_ID` (`ROOMTYPE_ID`);
+
+--
+-- Indexes for table `ROOMS`
+--
+ALTER TABLE `ROOMS`
+  ADD PRIMARY KEY (`ID`),
+  ADD KEY `HOTEL_ID` (`HOTEL_ID`),
+  ADD KEY `ROOMTYPE_ID` (`ROOMTYPE_ID`);
+
+--
+-- Indexes for table `ROOMTYPES`
+--
+ALTER TABLE `ROOMTYPES`
+  ADD PRIMARY KEY (`ID`);
+
+--
+-- Indexes for table `SERVICES`
+--
+ALTER TABLE `SERVICES`
+  ADD PRIMARY KEY (`HOTEL_ID`,`NAME`),
+  ADD UNIQUE KEY `ID` (`ID`),
+  ADD UNIQUE KEY `NAME` (`NAME`);
+
+--
+-- AUTO_INCREMENT for dumped tables
+--
+
+--
+-- AUTO_INCREMENT for table `BILLEDSERVICES`
+--
+ALTER TABLE `BILLEDSERVICES`
+  MODIFY `ID` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `BILLS`
+--
+ALTER TABLE `BILLS`
+  MODIFY `ID` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+
+--
+-- AUTO_INCREMENT for table `CLIENTS`
+--
+ALTER TABLE `CLIENTS`
+  MODIFY `ID` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+
+--
+-- AUTO_INCREMENT for table `HOTELS`
+--
+ALTER TABLE `HOTELS`
+  MODIFY `ID` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `OCCUPANTS`
+--
+ALTER TABLE `OCCUPANTS`
+  MODIFY `ID` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `OCCUPATIONS`
+--
+ALTER TABLE `OCCUPATIONS`
+  MODIFY `ID` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+
+--
+-- AUTO_INCREMENT for table `RESERVATIONS`
+--
+ALTER TABLE `RESERVATIONS`
+  MODIFY `ID` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `ROOMS`
+--
+ALTER TABLE `ROOMS`
+  MODIFY `ID` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=40;
+
+--
+-- AUTO_INCREMENT for table `ROOMTYPES`
+--
+ALTER TABLE `ROOMTYPES`
+  MODIFY `ID` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `SERVICES`
+--
+ALTER TABLE `SERVICES`
+  MODIFY `ID` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
+-- Constraints for dumped tables
+--
+
+--
+-- Constraints for table `BILLEDSERVICES`
+--
+ALTER TABLE `BILLEDSERVICES`
+  ADD CONSTRAINT `BILLEDSERVICES_ibfk_1` FOREIGN KEY (`OCCUPATION_ID`) REFERENCES `OCCUPATIONS` (`ID`),
+  ADD CONSTRAINT `BILLEDSERVICES_ibfk_2` FOREIGN KEY (`SERVICE_ID`) REFERENCES `SERVICES` (`ID`);
+
+--
+-- Constraints for table `BILLS`
+--
+ALTER TABLE `BILLS`
+  ADD CONSTRAINT `BILLS_ibfk_1` FOREIGN KEY (`RESERVATION_ID`) REFERENCES `RESERVATIONS` (`ID`),
+  ADD CONSTRAINT `BILLS_ibfk_2` FOREIGN KEY (`CLIENT_ID`) REFERENCES `CLIENTS` (`ID`);
+
+--
+-- Constraints for table `OCCUPANTS`
+--
+ALTER TABLE `OCCUPANTS`
+  ADD CONSTRAINT `OCCUPANTS_ibfk_1` FOREIGN KEY (`OCCUPATION_ID`) REFERENCES `OCCUPATIONS` (`ID`);
+
+--
+-- Constraints for table `OCCUPATIONS`
+--
+ALTER TABLE `OCCUPATIONS`
+  ADD CONSTRAINT `OCCUPATIONS_ibfk_1` FOREIGN KEY (`RESERVATION_ID`) REFERENCES `RESERVATIONS` (`ID`),
+  ADD CONSTRAINT `OCCUPATIONS_ibfk_2` FOREIGN KEY (`ROOM_ID`) REFERENCES `ROOMS` (`ID`);
+
+--
+-- Constraints for table `RESERVATIONS`
+--
+ALTER TABLE `RESERVATIONS`
+  ADD CONSTRAINT `RESERVATIONS_ibfk_1` FOREIGN KEY (`CLIENT_ID`) REFERENCES `CLIENTS` (`ID`),
+  ADD CONSTRAINT `RESERVATIONS_ibfk_2` FOREIGN KEY (`HOTEL_ID`) REFERENCES `HOTELS` (`ID`),
+  ADD CONSTRAINT `RESERVATIONS_ibfk_3` FOREIGN KEY (`ROOMTYPE_ID`) REFERENCES `ROOMTYPES` (`ID`);
+
+--
+-- Constraints for table `ROOMS`
+--
+ALTER TABLE `ROOMS`
+  ADD CONSTRAINT `ROOMS_ibfk_1` FOREIGN KEY (`HOTEL_ID`) REFERENCES `HOTELS` (`ID`),
+  ADD CONSTRAINT `ROOMS_ibfk_2` FOREIGN KEY (`ROOMTYPE_ID`) REFERENCES `ROOMTYPES` (`ID`);
+
+--
+-- Constraints for table `SERVICES`
+--
+ALTER TABLE `SERVICES`
+  ADD CONSTRAINT `SERVICES_ibfk_1` FOREIGN KEY (`HOTEL_ID`) REFERENCES `HOTELS` (`ID`);
+COMMIT;
+
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;

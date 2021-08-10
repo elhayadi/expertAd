@@ -1,0 +1,172 @@
+html, body, #root {
+    height:100%;
+}
+
+input:focus, input:active, select:focus, select:active {
+    outline: none;
+    box-shadow: none !important;
+}
+
+input:focus, select:focus {
+    border-color: darkgray !important;
+}
+
+svg {
+    padding-bottom: .25rem;
+}
+
+.full-height {
+    height: calc(100% - 70px);
+}
+
+.no-carret {
+    caret-color: transparent !important;
+}
+
+.label{
+    color: black;
+}
+
+.ul{
+    padding-left: 0;
+}
+
+#logo {
+    width: 80%;
+    height: 224px;
+}
+
+p {
+    margin: 0;
+}
+
+.error-message {
+    min-height: 24px;
+}
+
+.flex-center {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+}
+
+.position-ref {
+    position: relative;
+}
+
+.no-border {
+    border: none !important;
+}
+
+.navbar-top {
+    z-index: 1;
+    box-shadow: 0 0 20px 10px rgba(0,0,0,0.1);
+}
+
+/*************** Barre de recherche ****************/
+
+.searchInput {
+    padding: 10px 0 10px 0;
+    border-radius: 10px;
+    box-shadow: 0 4px 10px 3px rgba(0,0,0,0.1);
+}
+
+.searchInput label {
+    justify-content: left;
+    padding: 0 0 5px 0;
+}
+
+#peopleInput {
+    max-width: 140px;
+}
+
+.label-field {
+    font-size: 12px;
+    font-weight: bold;
+    color: rgba(0,0,0,.7);
+}
+
+select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background: transparent url("data:image/svg+xml;utf8,<svg fill='grey' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/><path d='M0 0h24v24H0z' fill='none'/></svg>") no-repeat;
+    background-position-x: 96%;
+    background-position-y: 3px;
+    padding-right: 25px !important;
+}
+
+/*************** Carte chambre ****************/
+
+.room-card {
+    box-shadow: 0 4px 10px 3px rgba(0,0,0,0.1);
+    border: none;
+}
+
+.card-img-top {
+    width: 100%;
+    height: 18vw;
+    object-fit: cover;
+}
+
+.star {
+    color: gold;
+}
+
+.hotel-city {
+    color: #363636;
+    font-weight: lighter;
+    font-size: 17px;
+}
+
+.room-price {
+    font-size: 20px;
+}
+
+/**************** Modal réservation ******************/
+
+.text-grey {
+    color: grey;
+    font-weight: initial;
+}
+
+.number-input {
+    max-width: 70px;
+}
+
+hr {
+    margin-top: 8px;
+    margin-bottom: 12px;
+}
+
+/*************** Transition ****************/
+
+.fade-effect {
+    animation: fadeIn 0.3s ease-out both;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translate3d(0, -5%, 0);
+    }
+    to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+}
+
+/*************** Profile utilisateur ****************/
+
+.edit-link {
+    cursor: pointer;
+    font-size: 20px;
+}
+
+.containerAdmin{
+    padding-right: 60px;
+    padding-left: 60px;
+    margin-top: 35px;
+}
+.bt1{
+    margin-bottom: 20px;
+}
